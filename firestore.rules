@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tipo == 'admin';
+    }
+
+    function isValidUserType(tipo) {
+      return tipo in ['admin', 'lojista', 'comum'];
+    }
+
+    // Perfil publico (visivel para usuarios autenticados)
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+
+      // Todo novo usuario nasce como comum, ativo e nao verificado.
+      allow create: if isOwner(userId)
+        && request.resource.data.id == request.auth.uid
+        && request.resource.data.tipo == 'comum'
+        && request.resource.data.ativo == true
+        && request.resource.data.verificado == false
+        && request.resource.data.blockedReason == '';
+
+      // O usuario pode editar o perfil, mas nao os campos administrativos.
+      // Apenas administradores podem alterar cargo, bloqueio e verificacao.
+      allow update: if (
+        isOwner(userId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.tipo == resource.data.tipo
+        && request.resource.data.ativo == resource.data.ativo
+        && request.resource.data.verificado == resource.data.verificado
+        && request.resource.data.blockedReason == resource.data.blockedReason
+        && request.resource.data.createdAt == resource.data.createdAt
+      ) || (
+        isAdmin()
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidUserType(request.resource.data.tipo)
+      );
+      allow delete: if false;
+    }
+
+    // Dados sensiveis (somente dono)
+    match /users_private/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == request.auth.uid;
+      allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+
+    match /showcases/{showcaseId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /products/{productId} {
+      allow list, get: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        // O dono pode editar o próprio produto
+        resource.data.ownerId == request.auth.uid 
+        || 
+        // Permite que um comprador reserve o produto
+        (
+          resource.data.status == 'disponivel' && 
+          request.resource.data.status == 'reservado' &&
+          request.resource.data.reservedBy == request.auth.uid
+        )
+        ||
+        // Permite cancelar reserva (dono ou reservador) e marcar como vendido (somente reservador)
+        (
+          resource.data.status == 'reservado' &&
+          (
+            (
+              request.resource.data.status == 'disponivel' &&
+              (resource.data.ownerId == request.auth.uid || resource.data.reservedBy == request.auth.uid)
+            )
+            ||
+            (
+              request.resource.data.status == 'vendido' &&
+              resource.data.reservedBy == request.auth.uid
+            )
+          )
+        )
+      );
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /reservations/{reservationId} {
+      allow read: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.buyerId == request.auth.uid || request.resource.data.sellerId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    function isChatParticipant(chatData) {
+      return isSignedIn() && (chatData.buyerId == request.auth.uid || chatData.sellerId == request.auth.uid || isAdmin());
+    }
+
+    function isTransactionParticipant(transactionId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/transactions/$(transactionId))
+        && (
+          get(/databases/$(database)/documents/transactions/$(transactionId)).data.buyerId == request.auth.uid
+          || get(/databases/$(database)/documents/transactions/$(transactionId)).data.sellerId == request.auth.uid
+          || isAdmin()
+        );
+    }
+
+    match /chats/{chatId} {
+      allow get: if (resource != null && isChatParticipant(resource.data)) || isTransactionParticipant(chatId);
+      allow list: if isSignedIn()
+        && resource != null
+        && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isTransactionParticipant(chatId)
+        && get(/databases/$(database)/documents/transactions/$(chatId)).data.status == 'concluida'
+        && request.resource.data.transactionId == chatId
+        && request.resource.data.buyerId == get(/databases/$(database)/documents/transactions/$(chatId)).data.buyerId
+        && request.resource.data.sellerId == get(/databases/$(database)/documents/transactions/$(chatId)).data.sellerId
+        && request.resource.data.transactionId is string
+        && request.resource.data.participants is list;
+      allow update: if isChatParticipant(resource.data)
+        && request.resource.data.buyerId == resource.data.buyerId
+        && request.resource.data.sellerId == resource.data.sellerId
+        && request.resource.data.transactionId == resource.data.transactionId;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if exists(/databases/$(database)/documents/chats/$(chatId))
+          && isChatParticipant(get(/databases/$(database)/documents/chats/$(chatId)).data);
+        allow create: if isSignedIn()
+          && exists(/databases/$(database)/documents/chats/$(chatId))
+          && isChatParticipant(get(/databases/$(database)/documents/chats/$(chatId)).data)
+          && request.resource.data.chatId == chatId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string;
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

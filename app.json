@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Nine Half",
+    "slug": "nine-half",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/logoNine.png",
+    "splash": {
+      "image": "./assets/logoNine.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.matheus.ninehalf",
+      "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logoNine.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d1ff45ed-bc51-4ba9-b801-2237afdc2bbb"
+      }
+    },
+    "owner": "notfake"
+  }
+}

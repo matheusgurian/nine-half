@@ -1,0 +1,41 @@
+# Dependencias e arquivos gerados
+node_modules/
+.expo/
+dist/
+build/
+coverage/
+.diagnostics-*/
+*.log
+*.tsbuildinfo
+
+# Configuracao publica do app versionada; overrides locais e credenciais ignorados
+.env.*
+!.env.example
+credentials.json
+*.jks
+*.keystore
+!android/app/debug.keystore
+*.p12
+*.p8
+*.mobileprovision
+
+# Caches e saidas nativas (preservar fontes Android)
+.gradle/
+.kotlin/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.ipa
+
+# Editores e sistema operacional
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Documentacao pessoal, fora do repositorio
+/materiais-locais/
+/erros/
+/track-traill-reference/
